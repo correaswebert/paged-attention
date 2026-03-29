@@ -1,19 +1,24 @@
-import typer
-import torch
-import tokenizer
+from request import Request
+from scheduler import Scheduler
+from tokenizer import Tokenizer
 
 
-def tokenize(prompt: str):
-    ...
+def main():
+    tokenizer = Tokenizer()
+    scheduler = Scheduler()
 
+    while True:
+        prompt = input(">>> ")
+        tokenized_prompt = tokenizer.encode(prompt)
 
-def forward():
-    ...
+        request = Request(prompt=prompt, tokenized_prompt=tokenized_prompt)
 
-
-def main(prompt: str):
-    tokenizer.encode(prompt)
+        scheduler.add_task(request)
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    try:
+        main()
+    
+    except KeyboardInterrupt:
+        pass

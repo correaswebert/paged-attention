@@ -38,8 +38,41 @@ class CacheManager:
         # tracks the reference count of each physical block
         self.refcount = [0 for _ in range(self.num_blocks)]
 
-    def allocate(self):
+    @property
+    def kv_cache(self):
+        return self.k_cache, self.v_cache
+
+    def allocate(self) -> int:
+        """Issue the next free physical block"""
+        try:
+            phy_block_id = self.free_list.pop()
+
+        except IndexError:
+            raise Exception("All physical blocks are allocated")
+            # TODO: trigger cache offloading
+
+        self.refcount[phy_block_id] = 1
+
+        return phy_block_id
+
+    def free(self, phy_block_id: int):
+        self.refcount[phy_block_id] -= 1
+
+        if self.refcount[phy_block_id] == 0:
+            self.free_list.append(phy_block_id)
+
+    def append(self):
+        """Adds token at the end of block list
+        
+        The token is appended to the end of the physical (and correspondingly
+        logical) block. If the refcount is not one, then a copy-on-write is
+        triggered to diverge. In case the physical block is full, a new block
+        is allocated.
+        """
         ...
 
-    def free(self):
+    def copy(self):
+        ...
+
+    def fork(self):
         ...
