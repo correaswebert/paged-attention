@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <torch/extension.h>
+#include <torch.h>
 #include <float.h>
 #include <math.h>
 
@@ -247,10 +248,4 @@ void update_kv_cache(torch::Tensor k_cache, torch::Tensor v_cache, torch::Tensor
     if (err != cudaSuccess) {
         printf("CUDA Error: %s\n", cudaGetErrorString(err));
     }
-}
-
-// Python bindings
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("custom_flash_attention_decode", &custom_flash_attention_decode, "Custom FlashAttention in CUDA");
-    m.def("update_kv_cache", &update_kv_cache, "Update KV cache in CUDA");
 }

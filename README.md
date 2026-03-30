@@ -17,6 +17,17 @@ source .venv/bin/activate
 Now let us install the requirements.
 
 ```sh
-pip install numpy torch typer
+uv pip install numpy torch typer
+
+cd src/cuda
+uv pip install -e . --no-build-isolation
 ```
 
+TODO
+----
+
+- [ ] Scheduler
+- [ ] Cache manager
+- [ ] Executor
+- [ ] Engine
+- [ ] Processor

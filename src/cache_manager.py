@@ -4,6 +4,21 @@ import torch
 OOM_PREVENTION_BUFFER_SIZE = 300 * 1024 * 1024
 
 
+class CacheEngine:
+    def __init__(
+        self,
+        num_blocks: int,
+        block_size: int,
+        head_dim: int,
+        dtype=torch.bfloat16,
+        device="cuda"
+    ):
+        shape = (num_blocks, block_size, head_dim)
+
+        self.k_cache = torch.empty(shape, dtype=dtype, device=device)
+        self.v_cache = torch.empty(shape, dtype=dtype, device=device)
+
+
 class CacheManager:
     def __init__(
         self,

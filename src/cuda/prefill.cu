@@ -224,5 +224,5 @@ torch::Tensor custom_flash_attention(torch::Tensor q, torch::Tensor k, torch::Te
 
 // Python bindings
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("custom_flash_attention", &custom_flash_attention, "Custom FlashAttention in CUDA");
+    m.def("prefill", &custom_flash_attention, "Custom FlashAttention in CUDA");
 }

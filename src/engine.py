@@ -7,18 +7,13 @@ def main():
     tokenizer = Tokenizer()
     scheduler = Scheduler()
 
-    while True:
+    try:
         prompt = input(">>> ")
         tokenized_prompt = tokenizer.encode(prompt)
 
         request = Request(prompt=prompt, tokenized_prompt=tokenized_prompt)
 
-        scheduler.add_task(request)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    
+        scheduler.execute(request)
+        
     except KeyboardInterrupt:
         pass

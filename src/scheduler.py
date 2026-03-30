@@ -1,25 +1,26 @@
 from cache import CacheManager
 from request import Request
-
-
-def forward():
-    ...
-
-
-class Worker:
-    ...
-
+from model import Model
 
 class Scheduler:
     def __init__(self): 
         self.cache_manager = CacheManager(16, 16)
+        self.model = Model()
         self.waitq: list[Request] = []
         self.runq: list[Request] = []
-        self.NUM_WORKERS = 2
-        self.workers = [Worker() for _ in range(self.NUM_WORKERS)]
 
     def add_task(self, request: Request):
         self.waitq.append(request)
 
-    def run_task(self):
-        self.waitq
+    def execute(self, request: Request):
+        """Runs the task now instead of scheduling it"""
+
+        phy_block_id = self.cache_manager.allocate()
+        request.block_table.append([phy_block_id, 0])
+
+        # until the generation has completed
+        for token in self.model.get_next_token(request):
+            if request.last_block_size >= self.cache_manager.block_size:
+                phy_block_id = self.cache_manager.allocate()
+                request.block_table.append([phy_block_id, 0])
+
