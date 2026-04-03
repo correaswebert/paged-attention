@@ -1,22 +1,9 @@
 import torch
 
+from request import Request
+from request import LogicalTokenBlock
 
 OOM_PREVENTION_BUFFER_SIZE = 300 * 1024 * 1024
-
-
-class CacheEngine:
-    def __init__(
-        self,
-        num_blocks: int,
-        block_size: int,
-        head_dim: int,
-        dtype=torch.bfloat16,
-        device="cuda"
-    ):
-        shape = (num_blocks, block_size, head_dim)
-
-        self.k_cache = torch.empty(shape, dtype=dtype, device=device)
-        self.v_cache = torch.empty(shape, dtype=dtype, device=device)
 
 
 class CacheManager:
@@ -33,7 +20,7 @@ class CacheManager:
         self.dtype = dtype
         self.device = device
 
-        self.kv_cache_size = 1024 # TODO: calculate this instead of hardcoding
+        self.kv_cache_size = 10 * 1024 * 1024 # 10MB default for testing
 
         # each block can have a maximum of 'block_size' number of tokens
         # every token consumes 'head_dim x sizeof(dtype)' number of bytes
@@ -76,15 +63,42 @@ class CacheManager:
         if self.refcount[phy_block_id] == 0:
             self.free_list.append(phy_block_id)
 
-    def append(self):
+    def append(self, request: Request, token_id: int):
         """Adds token at the end of block list
         
-        The token is appended to the end of the physical (and correspondingly
-        logical) block. If the refcount is not one, then a copy-on-write is
-        triggered to diverge. In case the physical block is full, a new block
-        is allocated.
+        The token is appended to the end of the logical block. In case the
+        logical block is full, a new logical and physical block are allocated.
         """
-        ...
+
+        last_logical_block = request.last_logical_block
+
+        if last_logical_block is None or last_logical_block.is_full():
+            logical_block_id = len(request.logical_blocks) if request.logical_blocks else 0
+            new_block = LogicalTokenBlock(self.block_size, logical_block_id)
+            
+            phy_block_id = self.allocate()
+            
+            request.logical_blocks.append(new_block)
+            request.block_table.append(phy_block_id)
+            
+            last_logical_block = new_block
+
+        last_logical_block.append(token_id)
+        # In a real implementation we would also write the KV cache to physical memory
+
+    def free_request(self, request: Request):
+        if not request.block_table:
+            return
+
+        for phy_block_id in request.block_table:
+            self.free(phy_block_id)
+
+        request.block_table = []
+        
+    def get_block_table_tensor(self, request: Request) -> torch.Tensor:
+        if not request.block_table:
+            return torch.tensor([], dtype=torch.int32, device=self.device)
+        return torch.tensor(request.block_table, dtype=torch.int32, device=self.device)
 
     def copy(self):
         ...

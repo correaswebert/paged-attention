@@ -1,19 +1,20 @@
-from request import Request
+from processor import Processor
 from scheduler import Scheduler
-from tokenizer import Tokenizer
 
 
 def main():
-    tokenizer = Tokenizer()
     scheduler = Scheduler()
+    processor = Processor(scheduler)
 
     try:
         prompt = input(">>> ")
-        tokenized_prompt = tokenizer.encode(prompt)
-
-        request = Request(prompt=prompt, tokenized_prompt=tokenized_prompt)
-
-        scheduler.execute(request)
+        processor.process(prompt)
         
+        # Start execution loop for submitted requests
+        while scheduler.waitq or scheduler.runq:
+            scheduler.schedule()
+            scheduler.step()
+        
+
     except KeyboardInterrupt:
         pass
