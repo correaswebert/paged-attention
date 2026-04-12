@@ -1,79 +1,63 @@
-import torch
-from torch import Tensor
+import queue
 
-from cache_manager import CacheManager
-from request import Request
-from model import Model
+from cache_manager import KVCacheManager
+from model import PagedAttentionModel
+from processor import Processor
+
 
 class Scheduler:
-    def __init__(self): 
-        # Using smaller sizes for testing / demonstration
-        self.cache_manager = CacheManager(block_size=16, head_dim=64)
-        self.model = Model()
-        self.waitq: list[Request] = []
-        self.runq: list[Request] = []
+    """Queues requests, manages block lifecycle, and runs generation."""
 
-    def add_task(self, request: Request):
-        self.waitq.append(request)
+    def __init__(
+        self,
+        model: PagedAttentionModel,
+        kv_manager: KVCacheManager,
+        processor: Processor,
+    ):
+        self.model = model
+        self.kv_manager = kv_manager
+        self.processor = processor
+        self.req_queue = queue.Queue()
 
-    def execute(self, request: Request):
-        """Runs the task to completion"""
-        self.add_task(request)
-        
-        while self.waitq or self.runq:
-            self.schedule()
-            self.step()
+    def add_request(self, tokens: list[int], out_queue: queue.Queue):
+        self.req_queue.put(({"tokens": tokens}, out_queue))
 
-    def schedule(self):
-        """Moves requests from wait queue to run queue depending on available blocks"""
-        # A simple prefill schedule: just try to admit as many tasks as possible
-        # Normally, we'd estimate if there's enough blocks for the prompt
-        
-        # For simplicity, if we have a request in waitq, try to admit it
-        remaining_waitq = []
-        for req in self.waitq:
-            # check if we can allocate physical blocks for the initial prompt
-            # here we might just lazily move it and let the first step allocate
-            self.runq.append(req)
-            
-        self.waitq = remaining_waitq
+    def process_loop(self):
+        """Runs in a background thread to sequentially process the queue."""
+        while True:
+            req, out_queue = self.req_queue.get()
+            if req is None:
+                break
 
-    def step(self):
-        """Executes one decoding step for all running requests"""
-        completed = []
-        for req in list(self.runq): # using list() to allow concurrent removal
-            # Decode one token
-            try:
-                # Get block table as tensor
-                block_table_tensor = self.cache_manager.get_block_table_tensor(req)
-                
-                # get_next_token is a mock in model.py
-                token_gen = self.model.get_next_token(req, block_table_tensor)
-                next_token = next(token_gen)
-                req.tokenized_response.append(next_token)
-                
-                # Update KV cache
-                self.cache_manager.append(req, next_token)
-                
-                print(f"[Scheduler] Req '{req.prompt}' generated {len(req.tokenized_response)} tokens. Block table len: {len(block_table_tensor)}")
-                
-                # Stop condition (mocked: 10 tokens max)
-                if len(req.tokenized_response) >= 10:
-                    completed.append(req)
-                elif req.last_logical_block and req.last_logical_block.is_full():
-                    # Round robin: block is full, yield to other requests in waitq
-                    print(f"[Scheduler] Req '{req.prompt}' filled a block. Preempting.")
-                    self.runq.remove(req)
-                    self.waitq.append(req)
-            except Exception as e:
-                # OOM or other error triggers preemption/fail
-                print(f"Error executing request: {e}")
-                completed.append(req)
+            prompt_tokens = req["tokens"]
+            block_table = [self.kv_manager.allocate()]
+            pos = 0
 
-        # Remove completed requests and free their physical memory
-        for req in completed:
-            if req in self.runq:
-                self.runq.remove(req)
-            self.cache_manager.free_request(req)
-            print(f"[Scheduler] Req '{req.prompt}' completed.")
+            # Context Prefill + Generation loop (Generate up to 20 new tokens)
+            total_steps = len(prompt_tokens) + 20
+            last_token = prompt_tokens[0]
 
+            for i in range(1, total_steps):
+                # Dynamically allocate new blocks if we cross the block size boundary
+                if pos > 0 and pos % self.kv_manager.block_size == 0:
+                    block_table.append(self.kv_manager.allocate())
+
+                token_to_feed = (
+                    prompt_tokens[i] if i < len(prompt_tokens) else last_token
+                )
+
+                next_token = self.model.forward_step(
+                    token_to_feed, pos, block_table, self.kv_manager
+                )
+                pos += 1
+                last_token = next_token
+
+                # If we are in the generation phase, stream the decoded string back
+                if i >= len(prompt_tokens):
+                    text_chunk = self.processor.decode(next_token)
+                    out_queue.put(text_chunk)
+
+            out_queue.put(None)  # EOF Signal
+
+            for b in block_table:
+                self.kv_manager.free(b)

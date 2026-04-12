@@ -1,16 +1,15 @@
-from tokenizer import Tokenizer
-from scheduler import Scheduler
-from request import Request
+from transformers import AutoTokenizer
+
 
 class Processor:
-    def __init__(self, scheduler: Scheduler):
-        self.tokenizer = Tokenizer()
-        self.scheduler = scheduler
+    """Handles tokenization and detokenization using HF AutoTokenizer."""
 
-    def process(self, prompt: str):
-        # Create request and tokenize
-        req = Request(prompt=prompt)
-        req.tokenized_prompt = self.tokenizer.encode(prompt)
-        
-        # Enqueue the request in the scheduler
-        self.scheduler.add_task(req)
+    def __init__(self, model_id: str):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+    def encode(self, text: str) -> list[int]:
+        return self.tokenizer.encode(text, return_tensors="pt")[0].tolist()
+
+    def decode(self, token_id: int) -> str:
+        # skip_special_tokens avoids printing padding/EOS tokens explicitly
+        return self.tokenizer.decode([token_id], skip_special_tokens=True)
