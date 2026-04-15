@@ -1,16 +1,17 @@
 import sys
 
 import requests
+import typer
 
 
-def run_cli():
+def run_cli(endpoint: str = "http://localhost:8000/chat"):
     print("=" * 50)
     print("Paged Attention CLI Client")
-    print("Connecting to http://localhost:8000/chat")
+    print(f"Connecting to {endpoint}")
     print("Type 'quit' or 'exit' to stop.")
     print("=" * 50)
 
-    url = "http://localhost:8000/chat"
+    url = endpoint
 
     while True:
         try:
@@ -23,11 +24,12 @@ def run_cli():
             if not user_input.strip():
                 continue
 
-            print("Bot> ", end="")
-            sys.stdout.flush()
+            print("Bot> ", end="", flush=True)
 
             # stream=True keeps the connection open to receive chunks as they are yielded
-            response = requests.post(url, json={"prompt": user_input}, stream=True, timeout=10)
+            response = requests.post(
+                url, json={"prompt": user_input}, stream=True, timeout=10
+            )
             response.raise_for_status()
 
             for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
@@ -37,10 +39,10 @@ def run_cli():
 
             print()
 
+        except requests.exceptions.Timeout as e:
+            print(f"\n[Error] Timeout error: {e}")
         except requests.exceptions.ConnectionError:
-            print(
-                "\n[Error] Could not connect to the server. Is engine.py running on port 8000?"
-            )
+            print("\n[Error] Could not connect to the server.")
         except requests.exceptions.HTTPError as e:
             print(f"\n[Error] HTTP Error: {e}")
         except KeyboardInterrupt:
@@ -49,4 +51,4 @@ def run_cli():
 
 
 if __name__ == "__main__":
-    run_cli()
+    typer.run(run_cli)
