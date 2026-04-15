@@ -1,5 +1,6 @@
 import asyncio
 
+from pydantic import BaseModel
 import torch
 import typer
 import uvicorn
@@ -35,9 +36,13 @@ scheduler = Scheduler(model, kv_manager, processor.tokenizer.eos_token_id)
 app = FastAPI()
 
 
+class Chat(BaseModel):
+    prompt: str
+
+
 @app.post("/chat")
-async def chat_endpoint(prompt: str):
-    tokens = processor.encode(prompt)
+async def chat_endpoint(chat: Chat):
+    tokens = processor.encode(chat.prompt)
 
     request = InferenceRequest(tokens)
     scheduler.add_request(request)

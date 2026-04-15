@@ -4,7 +4,7 @@ from torch import Tensor
 from transformers import AutoModelForCausalLM
 
 from cache_manager import KVCacheManager
-from src.request import BlockTable, TokenId
+from request import BlockTable, TokenId
 
 
 class PagedAttentionModel(torch.nn.Module):
