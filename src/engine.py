@@ -3,14 +3,15 @@ import queue
 import threading
 
 import torch
+import typer
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 from cache_manager import KVCacheManager
 from model import PagedAttentionModel
 from processor import Processor
+from request import InferenceRequest
 from scheduler import Scheduler
 
 # Check CUDA availability early
@@ -39,16 +40,13 @@ threading.Thread(target=scheduler.process_loop, daemon=True).start()
 app = FastAPI()
 
 
-class PromptRequest(BaseModel):
-    prompt: str
-
-
 @app.post("/chat")
-async def chat_endpoint(request: PromptRequest):
-    tokens = processor.encode(request.prompt)
+async def chat_endpoint(prompt: str):
+    tokens = processor.encode(prompt)
     out_queue = queue.Queue()
 
-    scheduler.add_request(tokens, out_queue)
+    request = InferenceRequest(tokens, out_queue)
+    scheduler.add_request(request)
 
     async def stream_generator():
         while True:
@@ -64,6 +62,10 @@ async def chat_endpoint(request: PromptRequest):
     return StreamingResponse(stream_generator(), media_type="text/plain")
 
 
-if __name__ == "__main__":
+def main(port: int = 8000):
     print("Starting Paged Attention Engine...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    typer.run(main)

@@ -1,47 +1,30 @@
-from dataclasses import dataclass
+from queue import Queue
+from typing import Optional
 
-from torch import Tensor
+type BlockId = int
+type BlockTable = list[BlockId]
+type TokenId = int
 
 
-from typing import List, Optional
+class InferenceRequest:
+    """Tracks the state of a single request during continuous batching."""
 
-class LogicalTokenBlock:
-    def __init__(self, block_size: int, block_id: int):
-        self.block_size = block_size
-        self.block_id = block_id
-        self.tokens: List[int] = []
+    def __init__(
+        self,
+        prompt_tokens: list[TokenId],
+        out_queue: Queue[Optional[str]],
+        max_new_tokens: int = 50,
+    ):
+        self.prompt_tokens = prompt_tokens
+        self.out_queue = out_queue
+        self.max_new_tokens = max_new_tokens
 
-    def is_full(self) -> bool:
-        return len(self.tokens) == self.block_size
+        self.block_table: list[BlockId] = []
+        self.generated_tokens: list[TokenId] = []
+        self.pos = 0
 
-    def append(self, token: int):
-        if self.is_full():
-            raise ValueError("Logical token block is full")
-        self.tokens.append(token)
-
-@dataclass
-class Request:
-    prompt: str
-
-    response: str = ""
-    tokenized_prompt: Optional[list[int]] = None
-    tokenized_response: Optional[list[int]] = None
-    
-    logical_blocks: Optional[list[LogicalTokenBlock]] = None
-    block_table: Optional[list[int]] = None # Maps logical block index to physical block index
-
-    def __post_init__(self):
-        if self.tokenized_prompt is None:
-            self.tokenized_prompt = []
-        if self.tokenized_response is None:
-            self.tokenized_response = []
-        if self.logical_blocks is None:
-            self.logical_blocks = []
-        if self.block_table is None:
-            self.block_table = []
-
-    @property
-    def last_logical_block(self) -> Optional[LogicalTokenBlock]:
-        if self.logical_blocks is None or len(self.logical_blocks) == 0:
-            return None
-        return self.logical_blocks[-1]
+    def get_token_to_feed(self) -> int:
+        """Returns the prompt token if in prefill, or the last generated token if in decode."""
+        if self.pos < len(self.prompt_tokens):
+            return self.prompt_tokens[self.pos]
+        return self.generated_tokens[-1]

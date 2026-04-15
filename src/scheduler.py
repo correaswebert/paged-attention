@@ -1,30 +1,10 @@
-import queue
 import time
+from queue import Queue
 
 from cache_manager import KVCacheManager
 from model import PagedAttentionModel
 from processor import Processor
-
-
-class InferenceRequest:
-    """Tracks the state of a single request during continuous batching."""
-
-    def __init__(
-        self, prompt_tokens: list[int], out_queue: queue.Queue, max_new_tokens: int = 50
-    ):
-        self.prompt_tokens = prompt_tokens
-        self.out_queue = out_queue
-        self.max_new_tokens = max_new_tokens
-
-        self.block_table = []
-        self.generated_tokens = []
-        self.pos = 0
-
-    def get_token_to_feed(self) -> int:
-        """Returns the prompt token if in prefill, or the last generated token if in decode."""
-        if self.pos < len(self.prompt_tokens):
-            return self.prompt_tokens[self.pos]
-        return self.generated_tokens[-1]
+from request import InferenceRequest
 
 
 class Scheduler:
@@ -41,29 +21,31 @@ class Scheduler:
         self.kv_manager = kv_manager
         self.processor = processor
 
-        self.req_queue = queue.Queue()
+        self.pending_requests: Queue[InferenceRequest] = Queue()
         self.active_requests: list[InferenceRequest] = []
         self.max_batch_size = max_batch_size
 
         # Used to dynamically stop generation
         self.eos_token_id = processor.tokenizer.eos_token_id
 
-    def add_request(self, tokens: list[int], out_queue: queue.Queue):
-        self.req_queue.put(InferenceRequest(tokens, out_queue))
+    def add_request(self, request: InferenceRequest):
+        self.pending_requests.put(request)
 
     def process_loop(self):
         """Main engine loop. Every iteration executes exactly ONE batched forward pass."""
         while True:
             while (
                 len(self.active_requests) < self.max_batch_size
-                and not self.req_queue.empty()
+                and not self.pending_requests.empty()
             ):
-                new_req = self.req_queue.get()
+                next_req = self.pending_requests.get()
+
                 try:
-                    new_req.block_table.append(self.kv_manager.allocate())
-                    self.active_requests.append(new_req)
+                    phy_block_id = self.kv_manager.allocate()
+                    next_req.block_table.append(phy_block_id)
+                    self.active_requests.append(next_req)
                 except MemoryError:
-                    self.req_queue.queue.insert(0, new_req)
+                    self.pending_requests.queue.insert(0, next_req)
                     break
 
             if not self.active_requests:
@@ -74,7 +56,8 @@ class Scheduler:
                 # If crossing a block boundary, allocate a new physical block
                 if req.pos > 0 and req.pos % self.kv_manager.block_size == 0:
                     try:
-                        req.block_table.append(self.kv_manager.allocate())
+                        phy_block_id = self.kv_manager.allocate()
+                        req.block_table.append(phy_block_id)
                     except MemoryError:
                         print(
                             f"[Warning] Out of KV cache blocks for request at pos {req.pos}"
