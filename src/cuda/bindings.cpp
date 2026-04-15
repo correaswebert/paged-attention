@@ -1,12 +1,21 @@
 #include <torch/extension.h>
 
-// 1. Forward declare the host functions that launch your kernels.
-void launch_prefill(/* your args here */);
-void launch_decode(/* your args here */);
+// Forward declarations
+torch::Tensor custom_flash_attention(torch::Tensor q, torch::Tensor k,
+                                     torch::Tensor v, int num_heads,
+                                     bool causal);
+torch::Tensor custom_flash_attention_decode(
+    torch::Tensor q, torch::Tensor k_cache, torch::Tensor v_cache,
+    torch::Tensor block_table, int block_size, torch::Tensor context_lens,
+    int num_heads, bool causal);
+void update_kv_cache(torch::Tensor k_cache, torch::Tensor v_cache,
+                     torch::Tensor k, torch::Tensor v,
+                     torch::Tensor block_table, int block_size,
+                     torch::Tensor current_positions);
 
-// 2. Define the single module entry point
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("prefill", &launch_prefill, "PagedAttention Prefill Kernel");
-    m.def("decode", &launch_decode, "PagedAttention Decode Kernel");
-    m.def("update", &launch_update, "PagedAttention Update Kernel");
+    m.def("prefill", &custom_flash_attention, "PagedAttention Prefill Kernel");
+    m.def("decode", &custom_flash_attention_decode,
+          "PagedAttention Decode Kernel");
+    m.def("update", &update_kv_cache, "PagedAttention Update Kernel");
 }

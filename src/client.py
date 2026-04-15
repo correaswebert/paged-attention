@@ -27,7 +27,7 @@ def run_cli():
             sys.stdout.flush()
 
             # stream=True keeps the connection open to receive chunks as they are yielded
-            response = requests.post(url, json={"prompt": user_input}, stream=True)
+            response = requests.post(url, json={"prompt": user_input}, stream=True, timeout=10)
             response.raise_for_status()
 
             for chunk in response.iter_content(chunk_size=None, decode_unicode=True):

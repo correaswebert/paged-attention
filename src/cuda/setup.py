@@ -8,7 +8,7 @@ setup(
     ext_modules=[
         CUDAExtension(
             name="paged_attn",
-            sources=["decode.cu", "prefill.cu"],
+            sources=["bindings.cpp", "decode.cu", "prefill.cu"],
             extra_compile_args={
                 'cxx': ['-O2'],
                 'nvcc': ['-O2'],
