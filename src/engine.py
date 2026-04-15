@@ -24,9 +24,10 @@ NUMBER_OF_BLOCKS = 128
 processor = Processor(MODEL_ID)
 model = PagedAttentionModel(MODEL_ID)
 kv_manager = KVCacheManager(
+    num_layers=len(model.layers),
     num_blocks=NUMBER_OF_BLOCKS,
     block_size=TOKENS_PER_BLOCK,
-    num_heads=model.num_heads,
+    num_heads=model.num_kv_heads,
     head_dim=model.head_dim,
 )
 

@@ -1,4 +1,5 @@
 import torch
+from torch import Tensor
 
 
 class KVCacheManager:
@@ -6,6 +7,7 @@ class KVCacheManager:
 
     def __init__(
         self,
+        num_layers: int,
         num_blocks: int,
         block_size: int,
         num_heads: int,
@@ -13,19 +15,23 @@ class KVCacheManager:
         device="cuda",
     ):
         self.block_size = block_size
-        # flash_attn_with_kvcache expects caches of shape:
-        # [num_blocks, block_size, num_heads, head_dim]
+        # Shape: [num_layers, num_blocks, block_size, num_heads, head_dim]
+        # Each layer gets its own independent set of paged KV blocks.
         self.k_cache = torch.zeros(
-            (num_blocks, block_size, num_heads, head_dim),
+            (num_layers, num_blocks, block_size, num_heads, head_dim),
             dtype=torch.float16,
             device=device,
         )
         self.v_cache = torch.zeros(
-            (num_blocks, block_size, num_heads, head_dim),
+            (num_layers, num_blocks, block_size, num_heads, head_dim),
             dtype=torch.float16,
             device=device,
         )
         self.free_blocks = list(range(num_blocks))[::-1]
+
+    def get_layer_cache(self, layer_idx: int) -> tuple[Tensor, Tensor]:
+        # Returns [num_blocks, block_size, num_heads, head_dim] for this layer
+        return self.k_cache[layer_idx], self.v_cache[layer_idx]
 
     def allocate(self) -> int:
         if not self.free_blocks:
