@@ -1,9 +1,9 @@
+import threading
 import time
 from queue import Queue
 
 from cache_manager import KVCacheManager
 from model import PagedAttentionModel
-from processor import Processor
 from request import InferenceRequest
 
 
@@ -14,19 +14,24 @@ class Scheduler:
         self,
         model: PagedAttentionModel,
         kv_manager: KVCacheManager,
-        processor: Processor,
+        eos_token_id,
         max_batch_size: int = 16,
     ):
         self.model = model
         self.kv_manager = kv_manager
-        self.processor = processor
 
         self.pending_requests: Queue[InferenceRequest] = Queue()
         self.active_requests: list[InferenceRequest] = []
         self.max_batch_size = max_batch_size
 
         # Used to dynamically stop generation
-        self.eos_token_id = processor.tokenizer.eos_token_id
+        self.eos_token_id = eos_token_id
+
+    def run(self):
+        threading.Thread(target=self.process_loop, daemon=True).start()
+
+    def stop(self):
+        ...
 
     def add_request(self, request: InferenceRequest):
         self.pending_requests.put(request)
@@ -79,7 +84,7 @@ class Scheduler:
                 # If we are past the prompt (Decode phase), stream the generated token
                 if req.pos >= len(req.prompt_tokens) - 1:
                     req.generated_tokens.append(token)
-                    req.out_queue.put(self.processor.decode(token))
+                    req.out_queue.put(token)
 
                 req.pos += 1
 

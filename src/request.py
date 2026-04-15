@@ -12,16 +12,19 @@ class InferenceRequest:
     def __init__(
         self,
         prompt_tokens: list[TokenId],
-        out_queue: Queue[Optional[str]],
         max_new_tokens: int = 50,
     ):
         self.prompt_tokens = prompt_tokens
-        self.out_queue = out_queue
         self.max_new_tokens = max_new_tokens
 
+        self.out_queue: Queue[Optional[TokenId]] = Queue()
         self.block_table: list[BlockId] = []
         self.generated_tokens: list[TokenId] = []
         self.pos = 0
+
+    @property
+    def get_generated_token(self) -> Queue[Optional[TokenId]]:
+        return self.out_queue
 
     def get_token_to_feed(self) -> int:
         """Returns the prompt token if in prefill, or the last generated token if in decode."""

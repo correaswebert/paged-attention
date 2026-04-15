@@ -1,6 +1,4 @@
 import asyncio
-import queue
-import threading
 
 import torch
 import typer
@@ -32,10 +30,7 @@ kv_manager = KVCacheManager(
     head_dim=model.head_dim,
 )
 
-scheduler = Scheduler(model, kv_manager, processor)
-
-# Run the continuous processing loop in the background
-threading.Thread(target=scheduler.process_loop, daemon=True).start()
+scheduler = Scheduler(model, kv_manager, processor.tokenizer.eos_token_id)
 
 app = FastAPI()
 
@@ -43,27 +38,28 @@ app = FastAPI()
 @app.post("/chat")
 async def chat_endpoint(prompt: str):
     tokens = processor.encode(prompt)
-    out_queue = queue.Queue()
 
-    request = InferenceRequest(tokens, out_queue)
+    request = InferenceRequest(tokens)
     scheduler.add_request(request)
 
     async def stream_generator():
         while True:
             # Non-blocking wait for the background thread to produce a token
-            while out_queue.empty():
+            while request.get_generated_token.empty():
                 await asyncio.sleep(0.01)
 
-            chunk = out_queue.get()
+            chunk = request.get_generated_token.get()
             if chunk is None:
                 break
-            yield chunk
+
+            yield processor.decode(chunk)
 
     return StreamingResponse(stream_generator(), media_type="text/plain")
 
 
 def main(port: int = 8000):
     print("Starting Paged Attention Engine...")
+    scheduler.run()
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
